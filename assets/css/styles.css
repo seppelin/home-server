@@ -1,0 +1,24 @@
+.box {
+    border: 1px solid gray;
+    border-radius: 3px;
+    margin: 5px;
+    padding: 0.1rem;
+    gap: 0.1rem;
+}
+.on strong {
+    color: green;
+}
+label {
+    margin-right: 0.1rem;
+    padding: 0.1rem;
+    white-space: nowrap;
+}
+.success {
+    color: darkolivegreen;
+}
+.info {
+    color: darkorange;
+}
+.danger {
+    color: crimson;
+}

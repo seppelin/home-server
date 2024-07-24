@@ -1,0 +1,185 @@
+package views
+
+import (
+	"fmt"
+	"home-server/services"
+	"time"
+)
+
+var AREA_NAMES = [3]string{"Rasen", "Blumen", "Beet"}
+var DAY_NAMES = [7]string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
+
+func fmtHHMM(dur time.Duration) string {
+	return fmt.Sprintf("%02d:%02d", int(dur.Hours())%60, int(dur.Minutes())%60)
+}
+
+func fmtAutoOff(autoOff time.Duration, start time.Time) string {
+	dur := autoOff - time.Since(start)
+	return fmt.Sprintf("%02d:%02d:%02d", int(dur.Hours())%60, int(dur.Minutes())%60, int(dur.Seconds())%60)
+}
+
+templ Watering(wm services.WateringManual, wis []services.WateringInterval) {
+	<div>
+		<h2>Bewässerung</h2>
+		@WateringManual(wm)
+		<hr/>
+		<button hx-post="/interval" hx-target="#w-intervals" hx-swap="afterbegin">
+			Neues Intervall
+		</button>
+		<div id="w-intervals">
+			for _, wi := range wis {
+				@WateringInterval(wi)
+			}
+		</div>
+	</div>
+}
+
+templ WateringManual(wm services.WateringManual) {
+	<div
+		id="w-manuel"
+		class={ "box", templ.KV("on", wm.On) }
+	>
+		<strong>Intervall </strong>
+		if wm.On {
+			An
+		} else {
+			Aus
+		}
+		<br/>
+		for i, area := range wm.Areas {
+			if area {
+				{ AREA_NAMES[i] }, 
+			}
+		}
+		<br/>
+		Auto aus:<time>{ fmtHHMM(wm.AutoOff) }</time>
+		if wm.On && wm.AutoOff != 0 {
+			- Aus in:<time id="w-manual-time">{ fmtAutoOff(wm.AutoOff, wm.Start) }</time>
+			<script>
+				(() => {
+					console.log("Start Time Update")
+					setTimeout(updateManualTime, 500)
+				})()
+			</script>
+		}
+		<br/>
+		<button
+			hx-get="/manual/form"
+			hx-target="#w-manuel"
+			hx-swap="outerHTML"
+		>
+			Ändern
+		</button>
+	</div>
+}
+
+templ WateringManualForm(wm services.WateringManual) {
+	<form id="w-manual-form" class="box" hx-put="/manual" hx-swap="outerHTML">
+		<strong>Manuell </strong>
+		<label>
+			An<input name="on" type="checkbox" checked?={ wm.On }/>
+		</label>
+		<br/>
+		for i, area := range wm.Areas {
+			{ AREA_NAMES[i] }<input name={ AREA_NAMES[i] } type="checkbox" ch checked?={ area }/>, 
+		}
+		<br/>
+		<label>
+			AutoAus
+			<input name="auto-off" type="time" value={ fmtHHMM(wm.AutoOff) }/>
+		</label>
+		<br/>
+		<button class="success" type="submit">Bestätigen</button>
+		<button
+			class="info"
+			hx-get="/manual"
+			hx-target="#w-manual-form"
+			hx-swap="outerHTML"
+		>Verwerfen</button>
+	</form>
+}
+
+templ WateringInterval(wi services.WateringInterval) {
+	<div
+		id={ fmt.Sprintf("w-interval-%d", wi.Id) }
+		if wi.On {
+			class="box on"
+		} else {
+			class="box"
+		}
+	>
+		<strong>Intervall </strong>
+		if wi.On {
+			An
+		} else {
+			Aus
+		}
+		<br/>
+		for i, area := range wi.Areas {
+			if area {
+				{ AREA_NAMES[i] }, 
+			}
+		}
+		<br/>
+		for i, day := range wi.Days {
+			if day {
+				{ DAY_NAMES[i] }, 
+			}
+		}
+		<br/>
+		Start:<time>{ fmtHHMM(wi.Start) }</time>, Dauer:<time>{ fmtHHMM(wi.Duration) }</time>
+		<br/>
+		<button
+			hx-get={ fmt.Sprintf("/interval/form/%d", wi.Id) }
+			hx-target={ fmt.Sprintf("#w-interval-%d", wi.Id) }
+			hx-swap="outerHTML"
+		>
+			Ändern
+		</button>
+	</div>
+}
+
+templ WateringIntervalForm(wi services.WateringInterval) {
+	<form id={ fmt.Sprintf("w-interval-form-%d", wi.Id) } class="box" hx-put={ fmt.Sprintf("/interval/%d", wi.Id) } hx-swap="outerHTML">
+		<strong>Intervall </strong>
+		<label>
+			An<input name="on" type="checkbox" checked?={ wi.On }/>
+		</label>
+		<br/>
+		for i, area := range wi.Areas {
+			<label>
+				{ AREA_NAMES[i] }<input name={ AREA_NAMES[i] } type="checkbox" checked?={ area }/>, 
+			</label>
+		}
+		<br/>
+		for i, day := range wi.Days {
+			<label>
+				{ DAY_NAMES[i] }<input name={ DAY_NAMES[i] } type="checkbox" checked?={ day }/>, 
+			</label>
+		}
+		<br/>
+		<label>
+			Start
+			<input name="start" type="time" value={ fmtHHMM(wi.Start) }/>
+		</label>
+		<br/>
+		<label>
+			Dauer
+			<input name="duration" type="time" value={ fmtHHMM(wi.Duration) }/>
+		</label>
+		<br/>
+		<button class="success" type="submit">Bestätigen</button>
+		<button
+			class="info"
+			hx-get={ fmt.Sprintf("/interval/%d", wi.Id) }
+			hx-target={ fmt.Sprintf("#w-interval-form-%d", wi.Id) }
+			hx-swap="outerHTML"
+		>Verwerfen</button>
+		<button
+			class="danger"
+			hx-delete={ fmt.Sprintf("/interval/%d", wi.Id) }
+			hx-target={ fmt.Sprintf("#w-interval-form-%d", wi.Id) }
+			hx-swap="outerHTML"
+		>Löschen</button>
+	</form>
+}
