@@ -15,7 +15,7 @@ import (
 )
 
 var AREA_NAMES = [3]string{"Rasen", "Blumen", "Beet"}
-var DAY_NAMES = [7]string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
+var DAY_NAMES = [7]string{"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"}
 
 func fmtHHMM(dur time.Duration) string {
 	return fmt.Sprintf("%02d:%02d", int(dur.Hours())%60, int(dur.Minutes())%60)
@@ -173,7 +173,7 @@ func WateringManual(wm services.WateringManual) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</time><script>\r\n\t\t\t\t(() => {\r\n\t\t\t\t\tconsole.log(\"Start Time Update\")\r\n\t\t\t\t\tsetTimeout(updateManualTime, 500)\r\n\t\t\t\t})()\r\n\t\t\t</script>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</time><script>\n\t\t\t\t(() => {\n\t\t\t\t\tconsole.log(\"Start Time Update\")\n\t\t\t\t\tsetTimeout(updateManualTime, 500)\n\t\t\t\t})()\n\t\t\t</script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -323,7 +323,7 @@ func WateringInterval(wi services.WateringInterval) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("><strong>Intervall </strong> ")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("><strong>Intervall</strong> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -484,7 +484,7 @@ func WateringIntervalForm(wi services.WateringInterval) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\" hx-swap=\"outerHTML\"><strong>Intervall </strong> <label>An<input name=\"on\" type=\"checkbox\"")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\" hx-swap=\"outerHTML\"><strong>Intervall</strong> <label>An<input name=\"on\" type=\"checkbox\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

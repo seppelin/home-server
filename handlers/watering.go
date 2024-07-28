@@ -10,11 +10,11 @@ import (
 )
 
 type WateringHandler struct {
-	ws services.WaterinService
+	ws *services.Watering
 }
 
 func NewWateringHandler() WateringHandler {
-	return WateringHandler{ws: services.NewWateringService()}
+	return WateringHandler{ws: services.NewWatering()}
 }
 
 func (wh *WateringHandler) AddRoutes(g *echo.Group) {

@@ -7,7 +7,7 @@ import (
 )
 
 var AREA_NAMES = [3]string{"Rasen", "Blumen", "Beet"}
-var DAY_NAMES = [7]string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
+var DAY_NAMES = [7]string{"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"}
 
 func fmtHHMM(dur time.Duration) string {
 	return fmt.Sprintf("%02d:%02d", int(dur.Hours())%60, int(dur.Minutes())%60)
@@ -108,7 +108,7 @@ templ WateringInterval(wi services.WateringInterval) {
 			class="box"
 		}
 	>
-		<strong>Intervall </strong>
+		<strong>Intervall</strong>
 		if wi.On {
 			An
 		} else {
@@ -141,7 +141,7 @@ templ WateringInterval(wi services.WateringInterval) {
 
 templ WateringIntervalForm(wi services.WateringInterval) {
 	<form id={ fmt.Sprintf("w-interval-form-%d", wi.Id) } class="box" hx-put={ fmt.Sprintf("/interval/%d", wi.Id) } hx-swap="outerHTML">
-		<strong>Intervall </strong>
+		<strong>Intervall</strong>
 		<label>
 			An<input name="on" type="checkbox" checked?={ wi.On }/>
 		</label>

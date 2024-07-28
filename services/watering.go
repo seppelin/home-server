@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -23,53 +24,122 @@ type WateringInterval struct {
 	Duration time.Duration
 }
 
+type WateringUpdate struct {
+	item any
+}
+
 // Todo: Use DB
-type WaterinService struct {
+type Watering struct {
 	mutex     sync.Mutex
 	manual    WateringManual
 	intervals []WateringInterval
+	updates   chan WateringUpdate
 	nextIId   int
 }
 
-func NewWateringService() WaterinService {
-	return WaterinService{}
+func NewWatering() *Watering {
+	w := Watering{updates: make(chan WateringUpdate, 8)}
+	go w.UpdateManger()
+	return &w
 }
 
-func (ws *WaterinService) GetManual() WateringManual {
-	ws.mutex.Lock()
-	defer ws.mutex.Unlock()
-	return ws.manual
-}
+func (w *Watering) GetState() ([AREA_COUNT]bool, time.Duration) {
+	n := time.Now()
+	startOfDay := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, n.Location())
+	timeOfDay := n.Sub(startOfDay)
 
-func (ws *WaterinService) UpdateManual(on bool, areas [3]bool, autoOff time.Duration) WateringManual {
-	ws.mutex.Lock()
-	defer ws.mutex.Unlock()
-	if on && !ws.manual.On {
-		ws.manual.Start = time.Now()
+	// At lest update for the next Day
+	nextChange := time.Hour*24 - timeOfDay
+	var areas [AREA_COUNT]bool
+
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	for _, wi := range w.intervals {
+		if wi.On && wi.Days[n.Weekday()] {
+			if timeOfDay < wi.Start {
+				nextChange = min(nextChange, wi.Start-timeOfDay)
+			} else if timeOfDay < wi.Start+wi.Duration {
+				for i, area := range wi.Areas {
+					if area {
+						areas[i] = true
+					}
+				}
+				nextChange = min(nextChange, wi.Start+wi.Duration-timeOfDay)
+			}
+		}
 	}
-	ws.manual.On = on
-	ws.manual.Areas = areas
-	ws.manual.AutoOff = autoOff
-	return ws.manual
+
+	if w.manual.On && w.manual.AutoOff != 0 {
+		diff := w.manual.Start.Add(w.manual.AutoOff).Sub(n)
+		if diff <= 0 {
+			w.manual.On = false
+			w.updates <- WateringUpdate{item: "manual off"}
+		} else {
+			areas = w.manual.Areas
+			nextChange = min(nextChange, diff)
+		}
+	}
+	return areas, nextChange
 }
 
-func (ws *WaterinService) CreateInterval() WateringInterval {
-	wi := WateringInterval{Id: ws.nextIId}
-	ws.nextIId += 1
-	ws.intervals = append(ws.intervals, wi)
+func (w *Watering) UpdateManger() {
+	timer := time.NewTimer(0)
+	for {
+		select {
+		case t := <-timer.C:
+			fmt.Println("Timer: ", t)
+			state, nextChange := w.GetState()
+			fmt.Println("Results: ", state, nextChange)
+			timer.Reset(nextChange)
+		case u := <-w.updates:
+			fmt.Println("Update: ", u.item)
+			state, nextChange := w.GetState()
+			fmt.Println("Results: ", state, nextChange)
+			timer.Reset(nextChange)
+		}
+	}
+}
+
+func (w *Watering) GetManual() WateringManual {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	return w.manual
+}
+
+func (w *Watering) UpdateManual(on bool, areas [AREA_COUNT]bool, autoOff time.Duration) WateringManual {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	if on && !w.manual.On {
+		w.manual.Start = time.Now()
+	}
+	w.manual.On = on
+	w.manual.Areas = areas
+	w.manual.AutoOff = autoOff
+	w.updates <- WateringUpdate{item: w.manual}
+	return w.manual
+}
+
+func (w *Watering) CreateInterval() WateringInterval {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	wi := WateringInterval{Id: w.nextIId}
+	w.nextIId += 1
+	w.intervals = append(w.intervals, wi)
+	w.updates <- WateringUpdate{item: wi}
 	return wi
 }
 
-func (ws *WaterinService) GetIntervals() []WateringInterval {
-	ws.mutex.Lock()
-	defer ws.mutex.Unlock()
-	return ws.intervals
+func (w *Watering) GetIntervals() []WateringInterval {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	return w.intervals
 }
 
-func (ws *WaterinService) GetInterval(id int) (WateringInterval, bool) {
-	ws.mutex.Lock()
-	defer ws.mutex.Unlock()
-	for _, interval := range ws.intervals {
+func (w *Watering) GetInterval(id int) (WateringInterval, bool) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	for _, interval := range w.intervals {
 		if interval.Id == id {
 			return interval, true
 		}
@@ -77,24 +147,26 @@ func (ws *WaterinService) GetInterval(id int) (WateringInterval, bool) {
 	return WateringInterval{}, false
 }
 
-func (ws *WaterinService) UpdateInterval(wi WateringInterval) bool {
-	ws.mutex.Lock()
-	defer ws.mutex.Unlock()
-	for i, interval := range ws.intervals {
+func (w *Watering) UpdateInterval(wi WateringInterval) bool {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	for i, interval := range w.intervals {
 		if interval.Id == wi.Id {
-			ws.intervals[i] = wi
+			w.intervals[i] = wi
+			w.updates <- WateringUpdate{item: wi}
 			return true
 		}
 	}
 	return false
 }
 
-func (ws *WaterinService) DeleteInterval(id int) bool {
-	ws.mutex.Lock()
-	defer ws.mutex.Unlock()
-	for i, interval := range ws.intervals {
+func (w *Watering) DeleteInterval(id int) bool {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	for i, interval := range w.intervals {
 		if interval.Id == id {
-			ws.intervals = append(ws.intervals[:i], ws.intervals[i+1:]...)
+			w.intervals = append(w.intervals[:i], w.intervals[i+1:]...)
+			w.updates <- WateringUpdate{item: fmt.Sprint("Delete: ", id)}
 			return true
 		}
 	}
