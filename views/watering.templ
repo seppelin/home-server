@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var AREA_NAMES = [3]string{"Rasen", "Blumen", "Beet"}
+var AREA_NAMES = [services.AREA_COUNT]string{"Rasen", "Blumen", "Beet"}
 var DAY_NAMES = [7]string{"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"}
 
 func fmtHHMM(dur time.Duration) string {
@@ -19,14 +19,16 @@ func fmtAutoOff(autoOff time.Duration, start time.Time) string {
 }
 
 templ Watering(wm services.WateringManual, wis []services.WateringInterval) {
-	<div>
+	<div id="main" hx-ext="sse" sse-connect="/watering/updates">
 		<h2>Bewässerung</h2>
-		@WateringManual(wm)
+		<div>
+			@WateringManual(wm)
+		</div>
 		<hr/>
-		<button hx-post="/interval" hx-target="#w-intervals" hx-swap="afterbegin">
+		<button hx-post="/watering/interval" hx-target="#w-intervals" hx-swap="afterbegin">
 			Neues Intervall
 		</button>
-		<div id="w-intervals">
+		<div id="w-intervals" sse-swap="w-intervals" hx-swap="afterbegin">
 			for _, wi := range wis {
 				@WateringInterval(wi)
 			}
@@ -36,10 +38,12 @@ templ Watering(wm services.WateringManual, wis []services.WateringInterval) {
 
 templ WateringManual(wm services.WateringManual) {
 	<div
-		id="w-manuel"
+		sse-swap="w-manual"
+		hx-swap="outerHTML"
+		id="w-manual"
 		class={ "box", templ.KV("on", wm.On) }
 	>
-		<strong>Intervall </strong>
+		<strong>Manuell </strong>
 		if wm.On {
 			An
 		} else {
@@ -58,14 +62,14 @@ templ WateringManual(wm services.WateringManual) {
 			<script>
 				(() => {
 					console.log("Start Time Update")
-					setTimeout(updateManualTime, 500)
+					setTimeout(updateManualTime, 1000)
 				})()
 			</script>
 		}
 		<br/>
 		<button
-			hx-get="/manual/form"
-			hx-target="#w-manuel"
+			hx-get="/watering/manual/form"
+			hx-target="#w-manual"
 			hx-swap="outerHTML"
 		>
 			Ändern
@@ -74,7 +78,13 @@ templ WateringManual(wm services.WateringManual) {
 }
 
 templ WateringManualForm(wm services.WateringManual) {
-	<form id="w-manual-form" class="box" hx-put="/manual" hx-swap="outerHTML">
+	<form
+		id="w-manual-form"
+		class="box"
+		hx-put="/watering/manual"
+		hx-swap="outerHTML"
+		sse-swap="w-manual"
+	>
 		<strong>Manuell </strong>
 		<label>
 			An<input name="on" type="checkbox" checked?={ wm.On }/>
@@ -92,7 +102,7 @@ templ WateringManualForm(wm services.WateringManual) {
 		<button class="success" type="submit">Bestätigen</button>
 		<button
 			class="info"
-			hx-get="/manual"
+			hx-get="/watering/manual"
 			hx-target="#w-manual-form"
 			hx-swap="outerHTML"
 		>Verwerfen</button>
@@ -101,6 +111,8 @@ templ WateringManualForm(wm services.WateringManual) {
 
 templ WateringInterval(wi services.WateringInterval) {
 	<div
+		sse-swap={ fmt.Sprintf("w-interval-%d", wi.Id) }
+		hx-swap="outerHTML"
 		id={ fmt.Sprintf("w-interval-%d", wi.Id) }
 		if wi.On {
 			class="box on"
@@ -130,7 +142,7 @@ templ WateringInterval(wi services.WateringInterval) {
 		Start:<time>{ fmtHHMM(wi.Start) }</time>, Dauer:<time>{ fmtHHMM(wi.Duration) }</time>
 		<br/>
 		<button
-			hx-get={ fmt.Sprintf("/interval/form/%d", wi.Id) }
+			hx-get={ fmt.Sprintf("/watering/interval/form/%d", wi.Id) }
 			hx-target={ fmt.Sprintf("#w-interval-%d", wi.Id) }
 			hx-swap="outerHTML"
 		>
@@ -140,7 +152,13 @@ templ WateringInterval(wi services.WateringInterval) {
 }
 
 templ WateringIntervalForm(wi services.WateringInterval) {
-	<form id={ fmt.Sprintf("w-interval-form-%d", wi.Id) } class="box" hx-put={ fmt.Sprintf("/interval/%d", wi.Id) } hx-swap="outerHTML">
+	<form
+		id={ fmt.Sprintf("w-interval-form-%d", wi.Id) }
+		class="box"
+		hx-put={ fmt.Sprintf("/watering/interval/%d", wi.Id) }
+		hx-swap="outerHTML"
+		sse-swap={ fmt.Sprintf("w-interval-%d", wi.Id) }
+	>
 		<strong>Intervall</strong>
 		<label>
 			An<input name="on" type="checkbox" checked?={ wi.On }/>
@@ -171,13 +189,13 @@ templ WateringIntervalForm(wi services.WateringInterval) {
 		<button class="success" type="submit">Bestätigen</button>
 		<button
 			class="info"
-			hx-get={ fmt.Sprintf("/interval/%d", wi.Id) }
+			hx-get={ fmt.Sprintf("/watering/interval/%d", wi.Id) }
 			hx-target={ fmt.Sprintf("#w-interval-form-%d", wi.Id) }
 			hx-swap="outerHTML"
 		>Verwerfen</button>
 		<button
 			class="danger"
-			hx-delete={ fmt.Sprintf("/interval/%d", wi.Id) }
+			hx-delete={ fmt.Sprintf("/watering/interval/%d", wi.Id) }
 			hx-target={ fmt.Sprintf("#w-interval-form-%d", wi.Id) }
 			hx-swap="outerHTML"
 		>Löschen</button>
