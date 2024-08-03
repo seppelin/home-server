@@ -60,10 +60,7 @@ templ WateringManual(wm services.WateringManual) {
 		if wm.On && wm.AutoOff != 0 {
 			- Aus in:<time id="w-manual-time">{ fmtAutoOff(wm.AutoOff, wm.Start) }</time>
 			<script>
-				(() => {
-					console.log("Start Time Update")
-					setTimeout(updateManualTime, 1000)
-				})()
+				startManualTime();
 			</script>
 		}
 		<br/>

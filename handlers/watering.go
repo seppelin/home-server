@@ -94,7 +94,7 @@ func (wh *WateringHandler) GetState(c echo.Context) error {
 }
 
 func (wh *WateringHandler) WebUpdates(c echo.Context) error {
-	fmt.Printf("SSE client connected, ip: %v\n", c.RealIP())
+	c.Logger().Debugf("WebUpdate: client connected, ip: %v\n", c.RealIP())
 
 	w := c.Response()
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -105,20 +105,20 @@ func (wh *WateringHandler) WebUpdates(c echo.Context) error {
 		select {
 		case <-c.Request().Context().Done():
 			wh.bs.CancelSubscription(updates)
-			fmt.Printf("SSE client disconnected, ip: %v\n", c.RealIP())
+			c.Logger().Debugf("WebUpdate: client disconnected, ip: %v\n", c.RealIP())
 			return nil
 		case u := <-updates:
 			clientID, err := c.Cookie("client_id")
 			if err != nil {
-				println("Error", err)
-				continue
+				return err
 			}
 			if clientID.Value == u.ClientID {
-				println("WebUpdate: Same id", clientID.Value)
+				c.Logger().Debug("WebUpdate: Same id: ", clientID.Value)
 				continue
 			}
 			data := new(bytes.Buffer)
 			var id string
+
 			switch u.Kind {
 			case services.UpdateManual:
 				views.WateringManual(u.Manual).Render(c.Request().Context(), data)
@@ -132,7 +132,7 @@ func (wh *WateringHandler) WebUpdates(c echo.Context) error {
 			case services.DeleteInterval:
 				id = u.Interval.GetId()
 			}
-			fmt.Println("WebUpdate: ", u.Kind, id, clientID.Value)
+			c.Logger().Debug("WebUpdate: ", u.Kind, id, clientID.Value)
 			event := Event{
 				Event: []byte(id),
 				Data:  data.Bytes(),

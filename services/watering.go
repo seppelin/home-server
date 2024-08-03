@@ -197,7 +197,6 @@ func (w *Watering) update(web chan<- WateringUpdate, ard chan<- [AREA_COUNT]bool
 		areas = w.manual.Areas
 	}
 
-	fmt.Println("UpdateFunc: ", areas, nextDur)
 	ard <- areas
 	change.Reset(nextDur)
 }
@@ -211,10 +210,8 @@ func (w *Watering) manager() (<-chan WateringUpdate, <-chan [AREA_COUNT]bool) {
 		for {
 			select {
 			case <-change.C:
-				println("Change")
 				w.update(web, ard, change)
 			case u := <-w.updates:
-				fmt.Println("Update: ", u.Kind)
 				w.update(web, ard, change)
 				web <- u
 			}

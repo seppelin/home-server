@@ -12,7 +12,6 @@ func ClientIDMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		_, err := c.Cookie("client_id")
 		if err != nil {
 			clientID := uuid.New().String()
-			println("new id", clientID, c.RealIP(), err.Error())
 			c.SetCookie(&http.Cookie{
 				Name:     "client_id",
 				Value:    clientID,
