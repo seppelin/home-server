@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"home-server/services"
 	"time"
+	"strconv"
 )
 
 var AREA_NAMES = [services.AREA_COUNT]string{"Rasen", "Blumen", "Beet"}
@@ -15,12 +16,44 @@ func fmtHHMM(dur time.Duration) string {
 
 func fmtAutoOff(autoOff time.Duration, start time.Time) string {
 	dur := autoOff - time.Since(start)
-	return fmt.Sprintf("%02d:%02d:%02d", int(dur.Hours())%60, int(dur.Minutes())%60, int(dur.Seconds())%60)
+	return strconv.Itoa(int(dur.Milliseconds()))
 }
 
-templ Watering(wm services.WateringManual, wis []services.WateringInterval) {
+func fmtKind(kind services.ChangeKind, id int) (f string) {
+	switch kind{
+	case services.NewDay:
+		f = "Neuer Tag"
+	case services.AutoOff:
+		f = "Auto aus"
+	case services.IntervalOn:
+		f = fmt.Sprint("Intervall-", id, " an")
+	case services.IntervalOff:
+		f = fmt.Sprint("Intervall-", id, " aus")
+	}
+	return
+}
+
+templ State(state services.WateringState) {
+	<div id="w-state" sse-swap="w-state" hx-swap="outerHTML">
+		<strong>Aktuell: </strong>
+		for i, area := range state.Areas {
+			if area {
+				{ AREA_NAMES[i] }, 
+			}
+		}
+		 - <strong>Next: </strong>
+		{ fmtKind(state.Kind, state.IntervalID) }
+		in <time id="w-change">{ strconv.Itoa(int(state.Change.Milliseconds())) }</time>
+		<script>
+			startCountDown("w-change");
+		</script>
+	</div>
+}
+
+templ Watering(wm services.WateringManual, wis []services.WateringInterval, state services.WateringState) {
 	<div id="main" hx-ext="sse" sse-connect="/watering/updates">
 		<h2>Bewässerung</h2>
+		@State(state)
 		<div>
 			@WateringManual(wm)
 		</div>
@@ -56,11 +89,11 @@ templ WateringManual(wm services.WateringManual) {
 			}
 		}
 		<br/>
-		Auto aus:<time>{ fmtHHMM(wm.AutoOff) }</time>
+		Auto aus: <time>{ fmtHHMM(wm.AutoOff) }</time>
 		if wm.On && wm.AutoOff != 0 {
 			- Aus in:<time id="w-manual-time">{ fmtAutoOff(wm.AutoOff, wm.Start) }</time>
 			<script>
-				startManualTime();
+				startCountDown("w-manual-time");
 			</script>
 		}
 		<br/>
@@ -117,7 +150,7 @@ templ WateringInterval(wi services.WateringInterval) {
 			class="box"
 		}
 	>
-		<strong>Intervall</strong>
+		<strong>Intervall</strong>-{strconv.Itoa(wi.Id)}
 		if wi.On {
 			An
 		} else {
@@ -136,7 +169,7 @@ templ WateringInterval(wi services.WateringInterval) {
 			}
 		}
 		<br/>
-		Start:<time>{ fmtHHMM(wi.Start) }</time>, Dauer:<time>{ fmtHHMM(wi.Duration) }</time>
+		Start: <time>{ fmtHHMM(wi.Start) }</time>, Dauer: <time>{ fmtHHMM(wi.Duration) }</time>
 		<br/>
 		<button
 			hx-get={ fmt.Sprintf("/watering/interval/form/%d", wi.Id) }
@@ -156,7 +189,7 @@ templ WateringIntervalForm(wi services.WateringInterval) {
 		hx-swap="outerHTML"
 		sse-swap={ fmt.Sprintf("w-interval-%d", wi.Id) }
 	>
-		<strong>Intervall</strong>
+		<strong>Intervall</strong>-{strconv.Itoa(wi.Id)}
 		<label>
 			An<input name="on" type="checkbox" checked?={ wi.On }/>
 		</label>

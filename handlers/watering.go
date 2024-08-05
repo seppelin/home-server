@@ -84,12 +84,12 @@ func (wh *WateringHandler) AddRoutes(g *echo.Group) {
 }
 
 func (wh *WateringHandler) Index(c echo.Context) error {
-	watering := views.Watering(wh.ws.GetManual(), wh.ws.GetIntervals())
+	watering := views.Watering(wh.ws.GetManual(), wh.ws.GetIntervals(), wh.ws.State())
 	return Render(c, http.StatusOK, views.Index(watering))
 }
 
 func (wh *WateringHandler) GetState(c echo.Context) error {
-	state := MapState(wh.ws.GetState())
+	state := MapState(wh.ws.State().Areas)
 	return c.JSON(http.StatusOK, state)
 }
 
@@ -108,37 +108,45 @@ func (wh *WateringHandler) WebUpdates(c echo.Context) error {
 			c.Logger().Debugf("WebUpdate: client disconnected, ip: %v\n", c.RealIP())
 			return nil
 		case u := <-updates:
+			data := new(bytes.Buffer)
+			views.State(u.State).Render(c.Request().Context(), data)
+			event := Event{
+				Event: []byte("w-state"),
+				Data:  data.Bytes(),
+			}
+			if err := event.MarshalTo(w); err != nil {
+				return err
+			}
+			data.Reset()
 			clientID, err := c.Cookie("client_id")
 			if err != nil {
 				return err
 			}
 			if clientID.Value == u.ClientID {
 				c.Logger().Debug("WebUpdate: Same id: ", clientID.Value)
-				continue
-			}
-			data := new(bytes.Buffer)
-			var id string
-
-			switch u.Kind {
-			case services.UpdateManual:
-				views.WateringManual(u.Manual).Render(c.Request().Context(), data)
-				id = "w-manual"
-			case services.CreateInterval:
-				views.WateringInterval(u.Interval).Render(c.Request().Context(), data)
-				id = "w-intervals"
-			case services.UpdateInterval:
-				views.WateringInterval(u.Interval).Render(c.Request().Context(), data)
-				id = u.Interval.GetId()
-			case services.DeleteInterval:
-				id = u.Interval.GetId()
-			}
-			c.Logger().Debug("WebUpdate: ", u.Kind, id, clientID.Value)
-			event := Event{
-				Event: []byte(id),
-				Data:  data.Bytes(),
-			}
-			if err := event.MarshalTo(w); err != nil {
-				return err
+			} else {
+				var id string
+				switch u.Kind {
+				case services.UpdateManual:
+					views.WateringManual(u.Manual).Render(c.Request().Context(), data)
+					id = "w-manual"
+				case services.CreateInterval:
+					views.WateringInterval(u.Interval).Render(c.Request().Context(), data)
+					id = "w-intervals"
+				case services.UpdateInterval:
+					views.WateringInterval(u.Interval).Render(c.Request().Context(), data)
+					id = u.Interval.GetId()
+				case services.DeleteInterval:
+					id = u.Interval.GetId()
+				}
+				c.Logger().Debug("WebUpdate: ", u.Kind, id, clientID.Value)
+				event = Event{
+					Event: []byte(id),
+					Data:  data.Bytes(),
+				}
+				if err := event.MarshalTo(w); err != nil {
+					return err
+				}
 			}
 			w.Flush()
 		}

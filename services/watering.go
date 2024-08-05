@@ -35,6 +35,7 @@ const (
 	CreateInterval
 	UpdateInterval
 	DeleteInterval
+	ChangeState
 )
 
 type WateringUpdate struct {
@@ -42,6 +43,25 @@ type WateringUpdate struct {
 	Kind     WateringUpdateKind
 	Manual   WateringManual
 	Interval WateringInterval
+	State    WateringState
+}
+
+// IntervalOn - id
+// IntervalOff + id
+type ChangeKind int
+
+const (
+	NewDay ChangeKind = iota
+	AutoOff
+	IntervalOn
+	IntervalOff
+)
+
+type WateringState struct {
+	Areas      [3]bool
+	Change     time.Duration
+	Kind       ChangeKind
+	IntervalID int
 }
 
 // Todo: Use DB
@@ -59,30 +79,62 @@ func NewWatering() (*Watering, <-chan WateringUpdate, <-chan [AREA_COUNT]bool) {
 	return &w, web, ard
 }
 
-func (w *Watering) GetState() [AREA_COUNT]bool {
+func (w *Watering) State() WateringState {
+	s, _ := w.state(false)
+	return s
+}
+
+func (w *Watering) state(update bool) (state WateringState, man *WateringManual) {
 	n := time.Now()
 	startOfDay := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, n.Location())
 	timeOfDay := n.Sub(startOfDay)
 
-	var areas [AREA_COUNT]bool
+	// At lest update for the next Day
+	state.Change = time.Hour*24 - timeOfDay
+	state.Kind = NewDay
 
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+
 	for _, wi := range w.intervals {
 		if wi.On && wi.Days[n.Weekday()] {
-			if timeOfDay < wi.Start+wi.Duration {
+			if timeOfDay < wi.Start {
+				if wi.Start-timeOfDay <= state.Change {
+					state.Change = wi.Start - timeOfDay
+					state.Kind = IntervalOn
+					state.IntervalID = wi.Id
+				}
+			} else if timeOfDay < wi.Start+wi.Duration {
 				for i, area := range wi.Areas {
 					if area {
-						areas[i] = true
+						state.Areas[i] = true
 					}
+				}
+				if wi.Start+wi.Duration-timeOfDay <= state.Change {
+					state.Change = wi.Start + wi.Duration - timeOfDay
+					state.Kind = IntervalOff
+					state.IntervalID = wi.Id
 				}
 			}
 		}
 	}
+
 	if w.manual.On && w.manual.AutoOff != 0 {
-		areas = w.manual.Areas
+		diff := w.manual.Start.Add(w.manual.AutoOff).Sub(n)
+		if diff <= 0 && update {
+			w.manual.On = false
+			man = &w.manual
+		} else {
+			state.Areas = w.manual.Areas
+			if diff <= state.Change {
+				state.Change = diff
+				state.Kind = AutoOff
+			}
+		}
+	} else if w.manual.On {
+		state.Areas = w.manual.Areas
 	}
-	return areas
+	return
 }
 
 func (w *Watering) GetManual() WateringManual {
@@ -157,50 +209,6 @@ func (w *Watering) DeleteInterval(id int, clientID string) bool {
 	return false
 }
 
-func (w *Watering) update(web chan<- WateringUpdate, ard chan<- [AREA_COUNT]bool, change *time.Timer) {
-	n := time.Now()
-	startOfDay := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, n.Location())
-	timeOfDay := n.Sub(startOfDay)
-
-	var areas [AREA_COUNT]bool
-	// At lest update for the next Day
-	nextDur := time.Hour*24 - timeOfDay
-
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-
-	for _, wi := range w.intervals {
-		if wi.On && wi.Days[n.Weekday()] {
-			if timeOfDay < wi.Start {
-				nextDur = min(nextDur, wi.Start-timeOfDay)
-			} else if timeOfDay < wi.Start+wi.Duration {
-				for i, area := range wi.Areas {
-					if area {
-						areas[i] = true
-					}
-				}
-				nextDur = min(nextDur, wi.Start+wi.Duration-timeOfDay)
-			}
-		}
-	}
-
-	if w.manual.On && w.manual.AutoOff != 0 {
-		diff := w.manual.Start.Add(w.manual.AutoOff).Sub(n)
-		if diff <= 0 {
-			w.manual.On = false
-			web <- WateringUpdate{Kind: UpdateManual, Manual: w.manual}
-		} else {
-			areas = w.manual.Areas
-			nextDur = min(nextDur, diff)
-		}
-	} else if w.manual.On {
-		areas = w.manual.Areas
-	}
-
-	ard <- areas
-	change.Reset(nextDur)
-}
-
 func (w *Watering) manager() (<-chan WateringUpdate, <-chan [AREA_COUNT]bool) {
 	web := make(chan WateringUpdate)
 	ard := make(chan [AREA_COUNT]bool)
@@ -209,11 +217,24 @@ func (w *Watering) manager() (<-chan WateringUpdate, <-chan [AREA_COUNT]bool) {
 	go func() {
 		for {
 			select {
-			case <-change.C:
-				w.update(web, ard, change)
 			case u := <-w.updates:
-				w.update(web, ard, change)
+				s, m := w.state(true)
+				ard <- s.Areas
+				change.Reset(s.Change)
+				if m != nil {
+					web <- WateringUpdate{Kind: UpdateManual, Manual: *m, State: s}
+				}
+				u.State = s
 				web <- u
+			case <-change.C:
+				s, m := w.state(true)
+				ard <- s.Areas
+				change.Reset(s.Change)
+				if m != nil {
+					web <- WateringUpdate{Kind: UpdateManual, Manual: *m, State: s}
+				} else {
+					web <- WateringUpdate{Kind: ChangeState, State: s}
+				}
 			}
 		}
 	}()
